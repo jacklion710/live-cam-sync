@@ -13,6 +13,10 @@ struct CameraView: View {
     @StateObject var cameraManager = CameraManager()
     @ObservedObject var oscReceiver: OSCReceiver
     @State private var currentVideoOrientation: AVCaptureVideoOrientation = .portrait
+    @State private var showSavePrompt: Bool = false
+    @State private var showToast: Bool = false
+    @State private var toastText: String = ""
+    @State private var toastIsSuccess: Bool = true
     
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -43,6 +47,19 @@ struct CameraView: View {
                     } else if let doubleVal = Double(normalized) {
                         if doubleVal == 1 { cameraManager.startRecording() }
                         if doubleVal == 0 { cameraManager.stopRecording() }
+                    }
+                }
+                .onReceive(cameraManager.$lastRecordingURL) { url in
+                    if url != nil { showSavePrompt = true }
+                }
+                .onReceive(cameraManager.$lastSaveMessage) { message in
+                    guard let message = message else { return }
+                    toastText = message
+                    toastIsSuccess = (cameraManager.lastSaveSucceeded ?? false)
+                    withAnimation { showToast = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                        withAnimation { showToast = false }
+                        cameraManager.lastSaveMessage = nil
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
@@ -85,6 +102,46 @@ struct CameraView: View {
             .padding()
         }
         .navigationBarBackButtonHidden(true)
+        .alert("Save Recording?", isPresented: $showSavePrompt) {
+            Button("Discard", role: .destructive) {
+                showSavePrompt = false
+            }
+            Button("Save") {
+                cameraManager.saveLastRecordingToPhotoLibrary()
+                showSavePrompt = false
+            }
+        } message: {
+            Text("Would you like to save the recorded video to Photos?")
+        }
+        .overlay(alignment: .center) {
+            if cameraManager.isSavingToPhotos {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        Text("Saving...")
+                            .foregroundColor(.white)
+                            .font(.headline)
+                    }
+                    .padding(20)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(12)
+                }
+            }
+        }
+        .overlay(alignment: .top) {
+            if showToast {
+                Text(toastText)
+                    .foregroundColor(.white)
+                    .font(.subheadline)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background((toastIsSuccess ? Color.green : Color.red).opacity(0.9))
+                    .cornerRadius(10)
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
     }
     
     private func updateOrientation() {

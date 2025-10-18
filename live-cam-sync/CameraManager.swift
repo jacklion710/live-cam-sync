@@ -15,6 +15,10 @@ final class CameraManager: NSObject, ObservableObject {
     // Manages the camera capture session and video recording lifecycle.
     @Published var isRecording: Bool = false
     @Published var authorizationStatus: AVAuthorizationStatus = .notDetermined
+    @Published var lastRecordingURL: URL?
+    @Published var isSavingToPhotos: Bool = false
+    @Published var lastSaveSucceeded: Bool?
+    @Published var lastSaveMessage: String?
     
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "CameraSession.Queue")
@@ -177,19 +181,32 @@ final class CameraManager: NSObject, ObservableObject {
     }
     
     // O(1)
-    private func saveToPhotoLibrary(fileURL: URL) {
-        PHPhotoLibrary.requestAuthorization { status in
-            guard status == .authorized || status == .limited else {
-                print("CameraManager: Photos permission not granted")
-                return
+    func saveLastRecordingToPhotoLibrary() {
+        guard let fileURL = lastRecordingURL else { return }
+        isSavingToPhotos = true
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { _ in
+                self.performSave(fileURL: fileURL)
             }
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
-            }) { success, error in
+        } else {
+            PHPhotoLibrary.requestAuthorization { _ in
+                self.performSave(fileURL: fileURL)
+            }
+        }
+    }
+
+    private func performSave(fileURL: URL) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
+        }) { success, error in
+            DispatchQueue.main.async {
+                self.isSavingToPhotos = false
                 if let error = error {
-                    print("CameraManager: Failed to save video: \(error)")
+                    self.lastSaveSucceeded = false
+                    self.lastSaveMessage = "Failed to save: \(error.localizedDescription)"
                 } else {
-                    print("CameraManager: Saved video to Photos: \(success)")
+                    self.lastSaveSucceeded = success
+                    self.lastSaveMessage = success ? "Saved to Photos" : "Failed to save"
                 }
             }
         }
@@ -246,8 +263,15 @@ extension CameraManager: AVCaptureFileOutputRecordingDelegate {
         }
         if let error = error {
             print("CameraManager: Recording finished with error: \(error)")
+            DispatchQueue.main.async { [weak self] in
+                self?.lastRecordingURL = outputFileURL
+                self?.lastSaveSucceeded = false
+                self?.lastSaveMessage = "Recording finished with error: \(error.localizedDescription)"
+            }
         } else {
-            saveToPhotoLibrary(fileURL: outputFileURL)
+            DispatchQueue.main.async { [weak self] in
+                self?.lastRecordingURL = outputFileURL
+            }
         }
     }
 }
