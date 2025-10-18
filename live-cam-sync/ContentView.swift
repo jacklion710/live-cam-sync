@@ -146,6 +146,13 @@ struct ContentView: View {
             .sheet(isPresented: $showHelp) {
                 HelpView()
             }
+            .onAppear {
+                if !oscReceiverInstance.isListening {
+                    if let port = UInt16(portInput) {
+                        oscReceiverInstance.startListening(ipAddress: ipAddressInput, port: port)
+                    }
+                }
+            }
         }
     }
 }
