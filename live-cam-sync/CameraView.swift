@@ -102,6 +102,7 @@ struct CameraView: View {
                 }
             }
             .padding()
+            .padding(.top, 30)
         }
         .navigationBarBackButtonHidden(true)
         .background(Color.black)
