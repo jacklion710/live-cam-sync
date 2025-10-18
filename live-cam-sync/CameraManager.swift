@@ -9,6 +9,7 @@ import Foundation
 import AVFoundation
 import Photos
 import Combine
+import CoreGraphics
 
 final class CameraManager: NSObject, ObservableObject {
     // O(1) - simple property accessors
@@ -26,7 +27,7 @@ final class CameraManager: NSObject, ObservableObject {
     private var videoDeviceInput: AVCaptureDeviceInput?
     private var audioDeviceInput: AVCaptureDeviceInput?
     private var outputFileURL: URL?
-    private var currentVideoOrientation: AVCaptureVideoOrientation = .portrait
+    private var currentVideoRotationAngle: CGFloat = 0
     private var isStartingRecording: Bool = false
     
     override init() {
@@ -160,7 +161,15 @@ final class CameraManager: NSObject, ObservableObject {
             
             if let connection = self.movieOutput.connection(with: .video) {
                 if connection.isVideoStabilizationSupported { connection.preferredVideoStabilizationMode = .standard }
-                if connection.isVideoOrientationSupported { connection.videoOrientation = self.currentVideoOrientation }
+                if #available(iOS 17.0, *) {
+                    if connection.isVideoRotationAngleSupported(self.currentVideoRotationAngle) {
+                        connection.videoRotationAngle = self.currentVideoRotationAngle
+                    }
+                } else {
+                    if connection.isVideoOrientationSupported {
+                        connection.videoOrientation = .portrait
+                    }
+                }
             }
             
             self.movieOutput.startRecording(to: fileURL, recordingDelegate: self)
@@ -212,13 +221,28 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    // Update orientation for video output connection
-    func setVideoOutputOrientation(_ orientation: AVCaptureVideoOrientation) {
-        currentVideoOrientation = orientation
+    // Update rotation angle for video output connection
+    func setVideoOutputRotationAngle(_ angle: CGFloat) {
+        currentVideoRotationAngle = angle
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            if let connection = self.movieOutput.connection(with: .video), connection.isVideoOrientationSupported {
-                connection.videoOrientation = orientation
+            if let connection = self.movieOutput.connection(with: .video) {
+                if #available(iOS 17.0, *) {
+                    if connection.isVideoRotationAngleSupported(angle) {
+                        connection.videoRotationAngle = angle
+                    }
+                } else {
+                    let orientation: AVCaptureVideoOrientation
+                    switch (Int(angle) % 360 + 360) % 360 {
+                    case 90: orientation = .landscapeLeft
+                    case 180: orientation = .portraitUpsideDown
+                    case 270: orientation = .landscapeRight
+                    default: orientation = .portrait
+                    }
+                    if connection.isVideoOrientationSupported {
+                        connection.videoOrientation = orientation
+                    }
+                }
             }
         }
     }

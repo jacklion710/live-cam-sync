@@ -7,12 +7,13 @@
 
 import SwiftUI
 import AVFoundation
+import CoreGraphics
 
 struct CameraView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject var cameraManager = CameraManager()
     @ObservedObject var oscReceiver: OSCReceiver
-    @State private var currentVideoOrientation: AVCaptureVideoOrientation = .portrait
+    @State private var currentVideoRotationAngle: CGFloat = 0
     @State private var showSavePrompt: Bool = false
     @State private var showToast: Bool = false
     @State private var toastText: String = ""
@@ -20,12 +21,13 @@ struct CameraView: View {
     
     var body: some View {
         ZStack(alignment: .topLeading) {
-            CameraPreview(session: cameraManager.session, videoOrientation: currentVideoOrientation)
+            Color.black.ignoresSafeArea()
+            CameraPreview(session: cameraManager.session, videoRotationAngle: currentVideoRotationAngle)
                 .ignoresSafeArea()
                 .onAppear {
                     cameraManager.configureSession()
                     cameraManager.startSession()
-                    updateOrientation()
+                    updateRotationAngle()
                 }
                 .onDisappear {
                     cameraManager.stopSession()
@@ -63,7 +65,7 @@ struct CameraView: View {
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-                    updateOrientation()
+                    updateRotationAngle()
                 }
             
             HStack {
@@ -144,36 +146,49 @@ struct CameraView: View {
         }
     }
     
-    private func updateOrientation() {
+    private func updateRotationAngle() {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
         let interfaceOrientation = windowScene.interfaceOrientation
-        let videoOrientation: AVCaptureVideoOrientation
+        let angle: CGFloat
         switch interfaceOrientation {
         case .landscapeLeft:
-            videoOrientation = .landscapeLeft
+            angle = 90
         case .landscapeRight:
-            videoOrientation = .landscapeRight
+            angle = 270
         case .portraitUpsideDown:
-            videoOrientation = .portraitUpsideDown
+            angle = 180
         default:
-            videoOrientation = .portrait
+            angle = 0
         }
-        currentVideoOrientation = videoOrientation
-        cameraManager.setVideoOutputOrientation(videoOrientation)
+        currentVideoRotationAngle = angle
+        cameraManager.setVideoOutputRotationAngle(angle)
     }
 }
 
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
-    let videoOrientation: AVCaptureVideoOrientation
+    let videoRotationAngle: CGFloat
     
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
         if let connection = view.videoPreviewLayer.connection {
-            if connection.isVideoOrientationSupported {
-                connection.videoOrientation = videoOrientation
+            if #available(iOS 17.0, *) {
+                if connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                    connection.videoRotationAngle = videoRotationAngle
+                }
+            } else {
+                if connection.isVideoOrientationSupported {
+                    let orientation: AVCaptureVideoOrientation
+                    switch (Int(videoRotationAngle) % 360 + 360) % 360 {
+                    case 90: orientation = .landscapeLeft
+                    case 180: orientation = .portraitUpsideDown
+                    case 270: orientation = .landscapeRight
+                    default: orientation = .portrait
+                    }
+                    connection.videoOrientation = orientation
+                }
             }
             if connection.isVideoMirroringSupported {
                 connection.automaticallyAdjustsVideoMirroring = true
@@ -183,8 +198,23 @@ struct CameraPreview: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: PreviewView, context: Context) {
-        if let connection = uiView.videoPreviewLayer.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = videoOrientation
+        if let connection = uiView.videoPreviewLayer.connection {
+            if #available(iOS 17.0, *) {
+                if connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                    connection.videoRotationAngle = videoRotationAngle
+                }
+            } else {
+                if connection.isVideoOrientationSupported {
+                    let orientation: AVCaptureVideoOrientation
+                    switch (Int(videoRotationAngle) % 360 + 360) % 360 {
+                    case 90: orientation = .landscapeLeft
+                    case 180: orientation = .portraitUpsideDown
+                    case 270: orientation = .landscapeRight
+                    default: orientation = .portrait
+                    }
+                    connection.videoOrientation = orientation
+                }
+            }
         }
     }
 }
