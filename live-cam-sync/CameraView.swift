@@ -30,6 +30,13 @@ struct CameraView: View {
                     let normalized = value.split(separator: ",").first.map(String.init) ?? value
                         .replacingOccurrences(of: "\"", with: "")
                         .trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Debounce identical consecutive triggers to reduce duplicates
+                    struct Static { static var lastCommand: String = "" }
+                    if Static.lastCommand == normalized { return }
+                    Static.lastCommand = normalized
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        Static.lastCommand = ""
+                    }
                     if let intVal = Int(normalized) {
                         if intVal == 1 { cameraManager.startRecording() }
                         if intVal == 0 { cameraManager.stopRecording() }

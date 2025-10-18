@@ -23,6 +23,7 @@ final class CameraManager: NSObject, ObservableObject {
     private var audioDeviceInput: AVCaptureDeviceInput?
     private var outputFileURL: URL?
     private var currentVideoOrientation: AVCaptureVideoOrientation = .portrait
+    private var isStartingRecording: Bool = false
     
     override init() {
         super.init()
@@ -37,6 +38,19 @@ final class CameraManager: NSObject, ObservableObject {
                 DispatchQueue.main.async {
                     self?.authorizationStatus = granted ? .authorized : .denied
                 }
+            }
+        }
+    }
+
+    // O(1)
+    func requestPhotoLibraryAddAccess(completion: ((PHAuthorizationStatus) -> Void)? = nil) {
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                completion?(status)
+            }
+        } else {
+            PHPhotoLibrary.requestAuthorization { status in
+                completion?(status)
             }
         }
     }
@@ -111,12 +125,18 @@ final class CameraManager: NSObject, ObservableObject {
     
     // O(1)
     func startRecording() {
-        guard !isRecording else { return }
+        if isRecording || isStartingRecording { return }
+        isStartingRecording = true
+        DispatchQueue.main.async { [weak self] in self?.isRecording = true }
         checkPermissions()
         guard authorizationStatus == .authorized else {
             print("CameraManager: Camera permission not granted")
+            isStartingRecording = false
+            DispatchQueue.main.async { [weak self] in self?.isRecording = false }
             return
         }
+        // Proactively request Photos add permission so prompt appears early
+        requestPhotoLibraryAddAccess(completion: nil)
         
         // Prepare temp file URL
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -129,7 +149,10 @@ final class CameraManager: NSObject, ObservableObject {
                 self.session.startRunning()
             }
             
-            if self.movieOutput.isRecording { return }
+            if self.movieOutput.isRecording {
+                self.isStartingRecording = false
+                return
+            }
             
             if let connection = self.movieOutput.connection(with: .video) {
                 if connection.isVideoStabilizationSupported { connection.preferredVideoStabilizationMode = .standard }
@@ -138,6 +161,7 @@ final class CameraManager: NSObject, ObservableObject {
             
             self.movieOutput.startRecording(to: fileURL, recordingDelegate: self)
             DispatchQueue.main.async { self.isRecording = true }
+            self.isStartingRecording = false
         }
     }
     
