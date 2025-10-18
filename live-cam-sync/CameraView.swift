@@ -12,14 +12,16 @@ struct CameraView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject var cameraManager = CameraManager()
     @ObservedObject var oscReceiver: OSCReceiver
+    @State private var currentVideoOrientation: AVCaptureVideoOrientation = .portrait
     
     var body: some View {
         ZStack(alignment: .topLeading) {
-            CameraPreview(session: cameraManager.session)
+            CameraPreview(session: cameraManager.session, videoOrientation: currentVideoOrientation)
                 .ignoresSafeArea()
                 .onAppear {
                     cameraManager.configureSession()
                     cameraManager.startSession()
+                    updateOrientation()
                 }
                 .onDisappear {
                     cameraManager.stopSession()
@@ -39,7 +41,6 @@ struct CameraView: View {
                 .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
                     updateOrientation()
                 }
-                .onAppear { updateOrientation() }
             
             HStack {
                 Button(action: { dismiss() }) {
@@ -80,33 +81,48 @@ struct CameraView: View {
     }
     
     private func updateOrientation() {
-        let deviceOrientation = UIDevice.current.orientation
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+        let interfaceOrientation = windowScene.interfaceOrientation
         let videoOrientation: AVCaptureVideoOrientation
-        switch deviceOrientation {
+        switch interfaceOrientation {
         case .landscapeLeft:
-            videoOrientation = .landscapeRight
-        case .landscapeRight:
             videoOrientation = .landscapeLeft
+        case .landscapeRight:
+            videoOrientation = .landscapeRight
         case .portraitUpsideDown:
             videoOrientation = .portraitUpsideDown
         default:
             videoOrientation = .portrait
         }
+        currentVideoOrientation = videoOrientation
         cameraManager.setVideoOutputOrientation(videoOrientation)
     }
 }
 
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    let videoOrientation: AVCaptureVideoOrientation
     
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
+        if let connection = view.videoPreviewLayer.connection {
+            if connection.isVideoOrientationSupported {
+                connection.videoOrientation = videoOrientation
+            }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = true
+            }
+        }
         return view
     }
     
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        if let connection = uiView.videoPreviewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = videoOrientation
+        }
+    }
 }
 
 final class PreviewView: UIView {
