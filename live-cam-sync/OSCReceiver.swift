@@ -15,30 +15,29 @@ class OSCReceiver: ObservableObject {
     
     private var listener: NWListener?
     private var connection: NWConnection?
-    private let port: UInt16
     
-    init(port: UInt16 = 7400) {
-        self.port = port
-    }
-    
-    // Starts listening for OSC messages on the specified port
-    func startListening() {
+    // Starts listening for OSC messages on the specified IP and port
+    func startListening(ipAddress: String, port: UInt16) {
         guard !isListening else { return }
         
         do {
             let parameters = NWParameters.udp
             parameters.allowLocalEndpointReuse = true
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
+                host: NWEndpoint.Host(ipAddress),
+                port: NWEndpoint.Port(integerLiteral: port)
+            )
             
-            listener = try NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: port))
+            listener = try NWListener(using: parameters)
             
             listener?.stateUpdateHandler = { [weak self] state in
                 switch state {
                 case .ready:
                     DispatchQueue.main.async {
                         self?.isListening = true
-                        self?.lastReceivedMessage = "Listening on port \(self?.port ?? 0)..."
+                        self?.lastReceivedMessage = "Listening on \(ipAddress):\(port)..."
                     }
-                    print("OSC Receiver: Listening on port \(self?.port ?? 0)")
+                    print("OSC Receiver: Listening on \(ipAddress):\(port)")
                 case .failed(let error):
                     DispatchQueue.main.async {
                         self?.isListening = false
@@ -99,12 +98,10 @@ class OSCReceiver: ObservableObject {
             
             if let error = error {
                 print("OSC Receiver: Receive error: \(error)")
-                return
             }
             
-            if !isComplete {
-                self?.receiveData(on: connection)
-            }
+            // Continue receiving regardless of completion status for UDP datagrams
+            self?.receiveData(on: connection)
         }
     }
     

@@ -8,7 +8,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var oscReceiverInstance = OSCReceiver(port: 7400)
+    @StateObject private var oscReceiverInstance = OSCReceiver()
+    @State private var ipAddressInput: String = "0.0.0.0"
+    @State private var portInput: String = "7400"
     
     var body: some View {
         VStack(spacing: 30) {
@@ -17,6 +19,33 @@ struct ContentView: View {
                 .fontWeight(.bold)
             
             VStack(spacing: 20) {
+                VStack(spacing: 15) {
+                    HStack {
+                        Text("IP Address:")
+                            .font(.subheadline)
+                            .frame(width: 100, alignment: .leading)
+                        
+                        TextField("0.0.0.0", text: $ipAddressInput)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.system(.body, design: .monospaced))
+                            .disabled(oscReceiverInstance.isListening)
+                    }
+                    
+                    HStack {
+                        Text("Port:")
+                            .font(.subheadline)
+                            .frame(width: 100, alignment: .leading)
+                        
+                        TextField("7400", text: $portInput)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(.system(.body, design: .monospaced))
+                            .disabled(oscReceiverInstance.isListening)
+                    }
+                }
+                .padding()
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(10)
+                
                 HStack {
                     Text("Enable Receiver")
                         .font(.headline)
@@ -27,7 +56,9 @@ struct ContentView: View {
                         get: { oscReceiverInstance.isListening },
                         set: { isEnabled in
                             if isEnabled {
-                                oscReceiverInstance.startListening()
+                                if let port = UInt16(portInput) {
+                                    oscReceiverInstance.startListening(ipAddress: ipAddressInput, port: port)
+                                }
                             } else {
                                 oscReceiverInstance.stopListening()
                             }
@@ -45,7 +76,7 @@ struct ContentView: View {
                             .foregroundColor(oscReceiverInstance.isListening ? .green : .gray)
                             .font(.title2)
                         
-                        Text("Port: 7400")
+                        Text(oscReceiverInstance.isListening ? "\(ipAddressInput):\(portInput)" : "Not listening")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
