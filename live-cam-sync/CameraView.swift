@@ -36,6 +36,10 @@ struct CameraView: View {
                         if doubleVal == 0 { cameraManager.stopRecording() }
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+                    updateOrientation()
+                }
+                .onAppear { updateOrientation() }
             
             HStack {
                 Button(action: { dismiss() }) {
@@ -60,9 +64,35 @@ struct CameraView: View {
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                 }
+                
+                Button(action: { cameraManager.toggleCamera() }) {
+                    Image(systemName: "arrow.triangle.2.circlepath.camera")
+                        .font(.title2)
+                        .padding(10)
+                        .background(Color.black.opacity(0.5))
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
             }
             .padding()
         }
+        .navigationBarBackButtonHidden(true)
+    }
+    
+    private func updateOrientation() {
+        let deviceOrientation = UIDevice.current.orientation
+        let videoOrientation: AVCaptureVideoOrientation
+        switch deviceOrientation {
+        case .landscapeLeft:
+            videoOrientation = .landscapeRight
+        case .landscapeRight:
+            videoOrientation = .landscapeLeft
+        case .portraitUpsideDown:
+            videoOrientation = .portraitUpsideDown
+        default:
+            videoOrientation = .portrait
+        }
+        cameraManager.setVideoOutputOrientation(videoOrientation)
     }
 }
 
