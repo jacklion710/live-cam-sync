@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var ipAddressInput: String = "0.0.0.0"
     @State private var portInput: String = "7400"
     @State private var showHelp: Bool = false
+    @State private var showCamera: Bool = false
     
     var body: some View {
         NavigationView {
@@ -120,7 +121,7 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                NavigationLink(destination: CameraView(oscReceiver: oscReceiverInstance)) {
+                Button(action: { showCamera = true }) {
                     HStack(spacing: 8) {
                         Image(systemName: "video.fill")
                         Text("Open Camera Recorder")
@@ -145,6 +146,11 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showHelp) {
                 HelpView()
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraView(oscReceiver: oscReceiverInstance)
+                    .background(Color.black)
+                    .ignoresSafeArea()
             }
             .onAppear {
                 if !oscReceiverInstance.isListening {

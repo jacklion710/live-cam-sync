@@ -27,7 +27,6 @@ final class CameraManager: NSObject, ObservableObject {
     private var videoDeviceInput: AVCaptureDeviceInput?
     private var audioDeviceInput: AVCaptureDeviceInput?
     private var outputFileURL: URL?
-    private var currentVideoRotationAngle: CGFloat = 0
     private var isStartingRecording: Bool = false
     
     override init() {
@@ -161,15 +160,7 @@ final class CameraManager: NSObject, ObservableObject {
             
             if let connection = self.movieOutput.connection(with: .video) {
                 if connection.isVideoStabilizationSupported { connection.preferredVideoStabilizationMode = .standard }
-                if #available(iOS 17.0, *) {
-                    if connection.isVideoRotationAngleSupported(self.currentVideoRotationAngle) {
-                        connection.videoRotationAngle = self.currentVideoRotationAngle
-                    }
-                } else {
-                    if connection.isVideoOrientationSupported {
-                        connection.videoOrientation = .portrait
-                    }
-                }
+                // Orientation is managed live via updateOrientation(_:)
             }
             
             self.movieOutput.startRecording(to: fileURL, recordingDelegate: self)
@@ -221,28 +212,24 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    // Update rotation angle for video output connection
-    func setVideoOutputRotationAngle(_ angle: CGFloat) {
-        currentVideoRotationAngle = angle
+    // O(1)
+    // Applies the given capture orientation to all relevant video connections.
+    @MainActor
+    func updateOrientation(_ orientation: AVCaptureVideoOrientation) {
+        let apply: (AVCaptureConnection) -> Void = { conn in
+            if conn.isVideoOrientationSupported {
+                conn.videoOrientation = orientation
+            }
+            if conn.isVideoMirroringSupported {
+                conn.automaticallyAdjustsVideoMirroring = true
+            }
+        }
+
+        // Movie output must be set on the session queue
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            if let connection = self.movieOutput.connection(with: .video) {
-                if #available(iOS 17.0, *) {
-                    if connection.isVideoRotationAngleSupported(angle) {
-                        connection.videoRotationAngle = angle
-                    }
-                } else {
-                    let orientation: AVCaptureVideoOrientation
-                    switch (Int(angle) % 360 + 360) % 360 {
-                    case 90: orientation = .landscapeLeft
-                    case 180: orientation = .portraitUpsideDown
-                    case 270: orientation = .landscapeRight
-                    default: orientation = .portrait
-                    }
-                    if connection.isVideoOrientationSupported {
-                        connection.videoOrientation = orientation
-                    }
-                }
+            if let c = self.movieOutput.connection(with: .video) {
+                apply(c)
             }
         }
     }

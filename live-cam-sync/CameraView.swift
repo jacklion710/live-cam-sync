@@ -13,7 +13,7 @@ struct CameraView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject var cameraManager = CameraManager()
     @ObservedObject var oscReceiver: OSCReceiver
-    @State private var currentVideoRotationAngle: CGFloat = 0
+    @State private var currentCaptureOrientation: AVCaptureVideoOrientation = .portrait
     @State private var showSavePrompt: Bool = false
     @State private var showToast: Bool = false
     @State private var toastText: String = ""
@@ -22,12 +22,12 @@ struct CameraView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
-            CameraPreview(session: cameraManager.session, videoRotationAngle: currentVideoRotationAngle)
+            CameraPreview(session: cameraManager.session, orientation: currentCaptureOrientation)
                 .ignoresSafeArea()
                 .onAppear {
                     cameraManager.configureSession()
                     cameraManager.startSession()
-                    updateRotationAngle()
+                    updateCaptureOrientation()
                 }
                 .onDisappear {
                     cameraManager.stopSession()
@@ -65,7 +65,7 @@ struct CameraView: View {
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-                    updateRotationAngle()
+                    updateCaptureOrientation()
                 }
             
             HStack {
@@ -104,6 +104,7 @@ struct CameraView: View {
             .padding()
         }
         .navigationBarBackButtonHidden(true)
+        .background(Color.black)
         .alert("Save Recording?", isPresented: $showSavePrompt) {
             Button("Discard", role: .destructive) {
                 showSavePrompt = false
@@ -146,75 +147,63 @@ struct CameraView: View {
         }
     }
     
-    private func updateRotationAngle() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-        let interfaceOrientation = windowScene.interfaceOrientation
-        let angle: CGFloat
-        switch interfaceOrientation {
-        case .landscapeLeft:
-            angle = 90
-        case .landscapeRight:
-            angle = 270
-        case .portraitUpsideDown:
-            angle = 180
-        default:
-            angle = 0
+    // O(1)
+    // Maps current device/interface orientation to capture orientation and applies it
+    private func updateCaptureOrientation() {
+        let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        let fallbackIO = windowScene?.interfaceOrientation
+        let dev = UIDevice.current.orientation
+        let newOrientation = captureOrientation(for: dev, fallback: fallbackIO)
+        currentCaptureOrientation = newOrientation
+
+        // Update movie output orientation via manager on main actor
+        Task { @MainActor in
+            cameraManager.updateOrientation(newOrientation)
         }
-        currentVideoRotationAngle = angle
-        cameraManager.setVideoOutputRotationAngle(angle)
+    }
+}
+
+// O(1)
+// Single source of truth mapper for device/interface orientation to capture orientation
+fileprivate func captureOrientation(for o: UIDeviceOrientation,
+                                    fallback: UIInterfaceOrientation?) -> AVCaptureVideoOrientation {
+    switch o {
+    case .portrait: return .portrait
+    case .portraitUpsideDown: return .portraitUpsideDown
+    case .landscapeLeft: return .landscapeRight // device left = camera right
+    case .landscapeRight: return .landscapeLeft
+    default:
+        if let io = fallback {
+            switch io {
+            case .portrait: return .portrait
+            case .portraitUpsideDown: return .portraitUpsideDown
+            case .landscapeLeft: return .landscapeLeft
+            case .landscapeRight: return .landscapeRight
+            default: return .portrait
+            }
+        }
+        return .portrait
     }
 }
 
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
-    let videoRotationAngle: CGFloat
+    let orientation: AVCaptureVideoOrientation
     
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
-        if let connection = view.videoPreviewLayer.connection {
-            if #available(iOS 17.0, *) {
-                if connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                    connection.videoRotationAngle = videoRotationAngle
-                }
-            } else {
-                if connection.isVideoOrientationSupported {
-                    let orientation: AVCaptureVideoOrientation
-                    switch (Int(videoRotationAngle) % 360 + 360) % 360 {
-                    case 90: orientation = .landscapeLeft
-                    case 180: orientation = .portraitUpsideDown
-                    case 270: orientation = .landscapeRight
-                    default: orientation = .portrait
-                    }
-                    connection.videoOrientation = orientation
-                }
-            }
-            if connection.isVideoMirroringSupported {
-                connection.automaticallyAdjustsVideoMirroring = true
-            }
+        if let connection = view.videoPreviewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = orientation
+            if connection.isVideoMirroringSupported { connection.automaticallyAdjustsVideoMirroring = true }
         }
         return view
     }
     
     func updateUIView(_ uiView: PreviewView, context: Context) {
-        if let connection = uiView.videoPreviewLayer.connection {
-            if #available(iOS 17.0, *) {
-                if connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                    connection.videoRotationAngle = videoRotationAngle
-                }
-            } else {
-                if connection.isVideoOrientationSupported {
-                    let orientation: AVCaptureVideoOrientation
-                    switch (Int(videoRotationAngle) % 360 + 360) % 360 {
-                    case 90: orientation = .landscapeLeft
-                    case 180: orientation = .portraitUpsideDown
-                    case 270: orientation = .landscapeRight
-                    default: orientation = .portrait
-                    }
-                    connection.videoOrientation = orientation
-                }
-            }
+        if let connection = uiView.videoPreviewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = orientation
         }
     }
 }
@@ -222,4 +211,18 @@ struct CameraPreview: UIViewRepresentable {
 final class PreviewView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
     var videoPreviewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+        (layer as? AVCaptureVideoPreviewLayer)?.backgroundColor = UIColor.black.cgColor
+    }
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .black
+        (layer as? AVCaptureVideoPreviewLayer)?.backgroundColor = UIColor.black.cgColor
+    }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        videoPreviewLayer.frame = bounds
+    }
 }
