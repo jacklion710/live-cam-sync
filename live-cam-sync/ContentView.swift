@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var oscReceiverInstance = OSCReceiver()
     @State private var ipAddressInput: String = "0.0.0.0"
     @State private var portInput: String = "7400"
+    @State private var showHelp: Bool = false
     
     var body: some View {
         NavigationView {
@@ -135,6 +136,16 @@ struct ContentView: View {
             .padding()
             .frame(minWidth: 400, minHeight: 400)
             .navigationTitle("Live Cam Sync")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showHelp = true }) {
+                        Image(systemName: "questionmark.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showHelp) {
+                HelpView()
+            }
         }
     }
 }
