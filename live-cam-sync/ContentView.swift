@@ -53,7 +53,7 @@ struct ContentView: View {
                         }
                     }
                     .padding()
-                    .background(Color.gray.opacity(0.05))
+                    .background(Color.white.opacity(0.06))
                     .cornerRadius(10)
                     
                     HStack {
@@ -75,9 +75,10 @@ struct ContentView: View {
                             }
                         ))
                         .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: .green))
                     }
                     .padding()
-                    .background(Color.gray.opacity(0.1))
+                    .background(Color.white.opacity(0.08))
                     .cornerRadius(10)
                     
                     VStack(alignment: .leading, spacing: 15) {
@@ -102,7 +103,7 @@ struct ContentView: View {
                                 .font(.system(.body, design: .monospaced))
                                 .padding(10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.blue.opacity(0.1))
+                                .background(Color.blue.opacity(0.25))
                                 .cornerRadius(8)
                         }
                         
@@ -116,12 +117,12 @@ struct ContentView: View {
                                 .fontWeight(.semibold)
                                 .padding(15)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.green.opacity(0.1))
+                                .background(Color.green.opacity(0.25))
                                 .cornerRadius(8)
                         }
                     }
                     .padding()
-                    .background(Color.gray.opacity(0.05))
+                    .background(Color.white.opacity(0.06))
                     .cornerRadius(10)
                 }
                 .padding()
@@ -143,6 +144,7 @@ struct ContentView: View {
             }
             .padding()
             .frame(minWidth: 400, minHeight: 400)
+            .background(Color.black)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showHelp = true }) {
@@ -165,6 +167,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .preferredColorScheme(.dark)
         }
     }
 }
