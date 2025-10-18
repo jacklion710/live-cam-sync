@@ -16,10 +16,17 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 30) {
+            VStack(spacing: 24) {
+                Text("Live Cam Sync")
+                    .font(.system(size: 34, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+
+                Divider()
+
                 Text("OSC Receiver")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                    .font(.headline)
+                    .foregroundColor(.secondary)
                 
                 VStack(spacing: 20) {
                     VStack(spacing: 15) {
@@ -136,7 +143,6 @@ struct ContentView: View {
             }
             .padding()
             .frame(minWidth: 400, minHeight: 400)
-            .navigationTitle("Live Cam Sync")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showHelp = true }) {
